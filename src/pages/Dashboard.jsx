@@ -32,6 +32,8 @@ const Dashboard = () => {
   const [eventsLoading, setEventsLoading] = useState(true)
   const [walletBalance, setWalletBalance] = useState(0)
   const [totalTrades, setTotalTrades] = useState(0)
+  const [totalCharges, setTotalCharges] = useState(0)
+  const [totalPnl, setTotalPnl] = useState(0)
   const [userAccounts, setUserAccounts] = useState([])
   const [challengeModeEnabled, setChallengeModeEnabled] = useState(false)
   const tradingViewRef = useRef(null)
@@ -109,18 +111,29 @@ const Dashboard = () => {
 
   const fetchTrades = async () => {
     // Trades are fetched per trading account, not per user
-    // This will be populated when user views their trading accounts
     try {
       if (userAccounts.length > 0) {
         let total = 0
+        let charges = 0
+        let pnl = 0
         for (const account of userAccounts) {
           const res = await fetch(`${API_URL}/trade/history/${account._id}?limit=100`)
           if (res.ok) {
             const data = await res.json()
-            total += data.trades?.length || 0
+            const trades = data.trades || []
+            total += trades.length
+            // Calculate total charges and PnL from trades
+            trades.forEach(trade => {
+              charges += (trade.commission || 0) + (trade.swap || 0)
+              if (trade.status === 'CLOSED') {
+                pnl += trade.realizedPnl || 0
+              }
+            })
           }
         }
         setTotalTrades(total)
+        setTotalCharges(charges)
+        setTotalPnl(pnl)
       }
     } catch (error) {
       console.error('Error fetching trades:', error)
@@ -371,10 +384,9 @@ const Dashboard = () => {
                 <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
                   <DollarSign size={20} className="text-orange-500" />
                 </div>
-                <span className="text-red-500 text-xs font-medium">-2.4%</span>
-              </div>
+                </div>
               <p className="text-gray-500 text-sm mb-1">Total Charges</p>
-              <p className="text-white text-2xl font-bold">$1,892.50</p>
+              <p className="text-white text-2xl font-bold">${totalCharges.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
             </div>
 
             {/* Total PnL Box */}
@@ -383,10 +395,9 @@ const Dashboard = () => {
                 <div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center">
                   <Activity size={20} className="text-purple-500" />
                 </div>
-                <span className="text-accent-green text-xs font-medium">+15.3%</span>
-              </div>
+                </div>
               <p className="text-gray-500 text-sm mb-1">Total PnL</p>
-              <p className="text-white text-2xl font-bold text-accent-green">+$8,432.00</p>
+              <p className={`text-white text-2xl font-bold ${totalPnl >= 0 ? 'text-accent-green' : 'text-red-500'}`}>{totalPnl >= 0 ? '+' : ''}${totalPnl.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
             </div>
           </div>
 
