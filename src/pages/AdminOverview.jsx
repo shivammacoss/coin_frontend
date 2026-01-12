@@ -30,25 +30,55 @@ const AdminOverview = () => {
   const fetchData = async () => {
     setLoading(true)
     const token = localStorage.getItem('adminToken')
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api'
+    const headers = { 'Authorization': `Bearer ${token}` }
+    
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001/api'}/admin/users`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
+      // Fetch users
+      const usersRes = await fetch(`${API_URL}/admin/users`, { headers })
+      const usersData = usersRes.ok ? await usersRes.json() : { users: [] }
+      const userList = usersData.users || []
+      setUsers(userList)
+      
+      // Fetch transactions for deposits/withdrawals
+      let totalDeposits = 0
+      let totalWithdrawals = 0
+      try {
+        const txnRes = await fetch(`${API_URL}/wallet/admin/transactions`, { headers })
+        if (txnRes.ok) {
+          const txnData = await txnRes.json()
+          const transactions = txnData.transactions || []
+          transactions.forEach(txn => {
+            if (txn.status?.toUpperCase() === 'APPROVED') {
+              if (txn.type?.toUpperCase() === 'DEPOSIT') {
+                totalDeposits += txn.amount || 0
+              } else if (txn.type?.toUpperCase() === 'WITHDRAWAL') {
+                totalWithdrawals += txn.amount || 0
+              }
+            }
+          })
         }
-      })
-      if (response.ok) {
-        const data = await response.json()
-        const userList = data.users || []
-        setUsers(userList)
-        setStats({
-          totalUsers: userList.length,
-          activeToday: Math.floor(userList.length * 0.7),
-          newThisWeek: Math.floor(userList.length * 0.3),
-          totalDeposits: 125000,
-          totalWithdrawals: 45000,
-          pendingKYC: Math.floor(userList.length * 0.2)
-        })
+      } catch (e) {
+        console.log('Could not fetch transactions')
       }
+      
+      // Calculate real stats
+      const now = new Date()
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+      
+      const activeToday = userList.filter(u => u.lastLogin && new Date(u.lastLogin) >= todayStart).length
+      const newThisWeek = userList.filter(u => new Date(u.createdAt) >= weekAgo).length
+      const pendingKYC = userList.filter(u => u.kycStatus === 'PENDING').length
+      
+      setStats({
+        totalUsers: userList.length,
+        activeToday,
+        newThisWeek,
+        totalDeposits,
+        totalWithdrawals,
+        pendingKYC
+      })
     } catch (error) {
       console.error('Error fetching data:', error)
     }
@@ -68,33 +98,25 @@ const AdminOverview = () => {
       title: 'Total Users', 
       value: stats.totalUsers, 
       icon: Users, 
-      color: 'blue',
-      change: '+12%',
-      positive: true
+      color: 'blue'
     },
     { 
       title: 'Active Today', 
       value: stats.activeToday, 
       icon: TrendingUp, 
-      color: 'green',
-      change: '+5%',
-      positive: true
+      color: 'green'
     },
     { 
       title: 'Total Deposits', 
       value: `$${stats.totalDeposits.toLocaleString()}`, 
       icon: Wallet, 
-      color: 'purple',
-      change: '+18%',
-      positive: true
+      color: 'purple'
     },
     { 
       title: 'Total Withdrawals', 
       value: `$${stats.totalWithdrawals.toLocaleString()}`, 
       icon: CreditCard, 
-      color: 'orange',
-      change: '-3%',
-      positive: false
+      color: 'orange'
     },
   ]
 
@@ -107,10 +129,6 @@ const AdminOverview = () => {
             <div className="flex items-center justify-between mb-3">
               <div className={`w-10 h-10 bg-${stat.color}-500/20 rounded-lg flex items-center justify-center`}>
                 <stat.icon size={20} className={`text-${stat.color}-500`} />
-              </div>
-              <div className={`flex items-center gap-1 text-sm ${stat.positive ? 'text-green-500' : 'text-red-500'}`}>
-                {stat.positive ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-                {stat.change}
               </div>
             </div>
             <p className="text-gray-500 text-sm mb-1">{stat.title}</p>
